@@ -21,7 +21,7 @@ struct Neuron {
     bias: f64,
 }
 
-pub trait Layer : fmt::Debug {
+pub trait Layer: fmt::Debug {
     fn init(&mut self, next_layer_size: usize);
     fn input_size(&self) -> usize;
     fn evaluate(&self, input: &[f64]) -> Vec<f64>;
@@ -70,7 +70,7 @@ impl Layer for DenseLayer {
         let mut output = vec![0.0; self.weight_count];
         for (input_index, neuron) in self.neurons.iter().enumerate() {
             for (output_index, weight) in neuron.weights.iter().enumerate() {
-                output[output_index] += (input[input_index]) * weight + neuron.bias;
+                output[output_index] += (input[input_index] + neuron.bias) * weight;
             }
         }
         for value in &mut output {

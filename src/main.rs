@@ -69,6 +69,16 @@ fn main() {
         1.8,
         8.4,
         4.8,
+        2.4,
+        1.2,
+        6.0,
+        3.0,
+        12.38,
+        0.0,
+        1045.324,
+        0.123,
+        10547.8,
+        10983.543,
     ];
     let mut dataset = Vec::new();
     // Group into groups of 5.
@@ -91,7 +101,7 @@ fn main() {
             &mean_squared_error(dataset.to_vec()),
             &dataset,
             0.01,
-            4000
+            40000
         )
     );
 
