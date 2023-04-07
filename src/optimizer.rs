@@ -1,3 +1,5 @@
+use rand::{thread_rng, Rng, RngCore};
+
 use crate::neuron::Model;
 
 #[derive(Debug, Clone)]
@@ -76,61 +78,32 @@ pub fn fit(
                 .map(|item| model.evaluate_range(0, layer_index, &item.input))
                 .collect::<Vec<Vec<f64>>>();
             let trainable_parameter_count = model.layers()[layer_index].trainable_parameter_count();
-            let mut new_losses = Vec::with_capacity(trainable_parameter_count);
-            for trainable_parameter_index in 0..trainable_parameter_count {
-                let mut layer = &mut model.layers_mut()[layer_index];
-                let mut trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
-                // Change it by the learning rate and see what happens to the loss.
-                *trainable_parameter += learning_rate;
-                let new_loss_from_increasing = calculate_loss(
-                    model,
-                    dataset,
-                    loss_function,
-                    layer_index,
-                    &output_from_previous_layers,
-                );
-                // Refresh our references so rust doesn't complain.
-                layer = &mut model.layers_mut()[layer_index];
-                trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
-                // Now likewise for decreasing the value.
-                *trainable_parameter -= 2.0 * learning_rate;
-                let new_loss_from_decreasing = calculate_loss(
-                    model,
-                    dataset,
-                    loss_function,
-                    layer_index,
-                    &output_from_previous_layers,
-                );
-                // Refresh our references so rust doesn't complain.
-                layer = &mut model.layers_mut()[layer_index];
-                trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
-                // Now restore the original value of the parameter.
-                *trainable_parameter += learning_rate;
-                // Whichever one gave a better loss, that is the one we submit for this parameter.
-                if new_loss_from_increasing < new_loss_from_decreasing {
-                    new_losses.push((
-                        new_loss_from_increasing,
-                        *trainable_parameter + learning_rate,
-                        trainable_parameter_index,
-                    ));
-                } else {
-                    new_losses.push((
-                        new_loss_from_decreasing,
-                        *trainable_parameter - learning_rate,
-                        trainable_parameter_index,
-                    ));
-                }
-            }
-            // Now we commit the one which gave the best loss.
             if trainable_parameter_count > 0 {
-                let best = new_losses
-                    .into_iter()
-                    .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
-                    .unwrap();
-                let layer = &mut model.layers_mut()[layer_index];
-                if best.0 < loss {
-                    let trainable_parameter = layer.trainable_parameter(best.2);
-                    *trainable_parameter = best.1;
+                let mut improved = false;
+                while !improved {
+                    let selected_parameter_index =
+                        thread_rng().next_u64() % trainable_parameter_count as u64;
+                    let change_amount = thread_rng().gen_range(-1.0..1.0);
+                    let parameter = model.layers_mut()[layer_index]
+                        .trainable_parameter(selected_parameter_index as usize);
+                    let old_value = *parameter;
+                    *parameter += change_amount;
+                    let new_loss = calculate_loss(
+                        model,
+                        dataset,
+                        loss_function,
+                        layer_index,
+                        &output_from_previous_layers,
+                    );
+                    // We have to get the reference to the parameter again here so Rust knows that we aren't changing the variable while evaluating the model.
+                    let parameter = model.layers_mut()[layer_index]
+                        .trainable_parameter(selected_parameter_index as usize);
+                    if new_loss < loss {
+                        loss = new_loss;
+                        improved = true;
+                    } else {
+                        *parameter = old_value;
+                    }
                 }
             }
         }
