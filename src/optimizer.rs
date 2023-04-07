@@ -80,8 +80,9 @@ pub fn fit(
             for trainable_parameter_index in 0..trainable_parameter_count {
                 let mut layer = &mut model.layers_mut()[layer_index];
                 let mut trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
+                let original_value = trainable_parameter.clone();
                 // Change it by the learning rate and see what happens to the loss.
-                *trainable_parameter += learning_rate;
+                *trainable_parameter = original_value + learning_rate;
                 let new_loss_from_increasing = calculate_loss(
                     model,
                     dataset,
@@ -93,7 +94,7 @@ pub fn fit(
                 layer = &mut model.layers_mut()[layer_index];
                 trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
                 // Now likewise for decreasing the value.
-                *trainable_parameter -= 2.0 * learning_rate;
+                *trainable_parameter = original_value * -1.0 * learning_rate;
                 let new_loss_from_decreasing = calculate_loss(
                     model,
                     dataset,
@@ -105,7 +106,7 @@ pub fn fit(
                 layer = &mut model.layers_mut()[layer_index];
                 trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
                 // Now restore the original value of the parameter.
-                *trainable_parameter += learning_rate;
+                *trainable_parameter = original_value;
                 // Whichever one gave a better loss, that is the one we submit for this parameter.
                 if new_loss_from_increasing < new_loss_from_decreasing {
                     new_losses.push((
