@@ -50,7 +50,7 @@ pub fn fit(
     model: &mut Model,
     loss_function: &dyn LossFunction,
     dataset: &[DatasetItem],
-    mut learning_rate: f64,
+    learning_rate: f64,
     epochs: usize,
 ) -> ModelStats {
     let mut loss = f64::INFINITY;
