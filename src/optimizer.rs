@@ -1,4 +1,4 @@
-use crate::neuron::Model;
+use crate::neuron::{ExecutionContext, Model};
 
 #[derive(Debug, Clone)]
 pub struct ModelStats {
@@ -33,16 +33,17 @@ fn calculate_loss(
     loss_function: &dyn LossFunction,
     first_layer: usize,
     inputs: &[Vec<f64>],
+    execution_context: &mut ExecutionContext,
 ) -> f64 {
-    let losses_per_datapoint = dataset
+    let mean_loss = dataset
         .iter()
         .zip(inputs.iter())
         .map(|(item, input)| {
-            let output = model.evaluate_from(first_layer, input);
-            loss_function.loss(&item.label, &output)
+            let output = model.evaluate_from(first_layer, input, execution_context);
+            loss_function.loss(&item.label, output)
         })
-        .collect::<Vec<f64>>();
-    let mean_loss = losses_per_datapoint.iter().sum::<f64>() / losses_per_datapoint.len() as f64;
+        .sum::<f64>()
+        / dataset.len() as f64;
     mean_loss
 }
 
@@ -54,6 +55,7 @@ pub fn fit(
     epochs: usize,
 ) -> ModelStats {
     let mut loss = f64::INFINITY;
+    let mut execution_context = model.create_execution_context();
     for _epoch in 1..=epochs {
         // We could calculate the derivative and do all that.
         // We could also approximate the derivative by doing a finite difference.
@@ -67,13 +69,18 @@ pub fn fit(
                 .iter()
                 .map(|item| item.input.clone())
                 .collect::<Vec<Vec<f64>>>(),
+            &mut execution_context,
         );
         println!("Loss: {loss}");
         for layer_index in 0..model.layers().len() {
             // Cache the calculations for the previous layers to make it faster.
             let output_from_previous_layers = dataset
                 .iter()
-                .map(|item| model.evaluate_range(0, layer_index, &item.input))
+                .map(|item| {
+                    model
+                        .evaluate_range(0, layer_index, &item.input, &mut execution_context)
+                        .to_vec()
+                })
                 .collect::<Vec<Vec<f64>>>();
             let trainable_parameter_count = model.layers()[layer_index].trainable_parameter_count();
             let mut new_losses = Vec::with_capacity(trainable_parameter_count);
@@ -89,6 +96,7 @@ pub fn fit(
                     loss_function,
                     layer_index,
                     &output_from_previous_layers,
+                    &mut execution_context,
                 );
                 // Refresh our references so rust doesn't complain.
                 layer = &mut model.layers_mut()[layer_index];
@@ -101,6 +109,7 @@ pub fn fit(
                     loss_function,
                     layer_index,
                     &output_from_previous_layers,
+                    &mut execution_context,
                 );
                 // Refresh our references so rust doesn't complain.
                 layer = &mut model.layers_mut()[layer_index];

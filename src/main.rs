@@ -48,17 +48,15 @@ fn read_inputs() -> Vec<DatasetItem> {
 fn main() {
     let mut model = Model::new(vec![
         Box::new(DenseLayer::new(INPUT_LETTER_COUNT * 26, Activation::Relu)),
-        Box::new(DenseLayer::new(INPUT_LETTER_COUNT * 26, Activation::Relu)),
+        //Box::new(DenseLayer::new(INPUT_LETTER_COUNT * 26, Activation::Relu)),
         Box::new(DenseLayer::new(1, Activation::Sigmoid)),
         Box::new(OutputLayer::new(1)),
     ]);
     let dataset = read_inputs();
     println!(
         "{:?}",
-        fit(&mut model, &MeanSquaredError, &dataset, 0.01, 40000)
+        fit(&mut model, &MeanSquaredError, &dataset, 0.1, 100)
     );
 
-    println!("{model:?}");
-    let input = [2.0; 5];
-    println!("{:?}", model.evaluate(&input));
+    //println!("{model:?}");
 }

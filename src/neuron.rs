@@ -24,10 +24,40 @@ struct Neuron {
     bias: f64,
 }
 
+pub struct LayerExecutionContext {
+    outputs: Vec<f64>,
+}
+
+impl LayerExecutionContext {
+    fn new(number_of_outputs: usize) -> Self {
+        Self {
+            outputs: vec![0.0; number_of_outputs],
+        }
+    }
+}
+
+pub struct ExecutionContext {
+    layer_execution_contexts: Vec<LayerExecutionContext>,
+}
+
+impl ExecutionContext {
+    fn new() -> Self {
+        Self {
+            layer_execution_contexts: Vec::new(),
+        }
+    }
+
+    fn add_layer(&mut self, number_of_outputs: usize) {
+        self.layer_execution_contexts
+            .push(LayerExecutionContext::new(number_of_outputs));
+    }
+}
+
 pub trait Layer: fmt::Debug {
     fn init(&mut self, next_layer_size: usize);
     fn input_size(&self) -> usize;
-    fn evaluate(&self, input: &[f64]) -> Vec<f64>;
+    /// Outputs are stored in the execution context.
+    fn evaluate(&self, input: &[f64], execution_context: &mut LayerExecutionContext);
     fn trainable_parameter_count(&self) -> usize;
     fn trainable_parameter(&mut self, index: usize) -> &mut f64;
 }
@@ -69,17 +99,18 @@ impl Layer for DenseLayer {
         self.neurons.len()
     }
 
-    fn evaluate(&self, input: &[f64]) -> Vec<f64> {
-        let mut output = vec![0.0; self.weight_count];
+    fn evaluate(&self, input: &[f64], execution_context: &mut LayerExecutionContext) {
+        // Zero it.
+        execution_context.outputs.fill(0.0);
         for (input_index, neuron) in self.neurons.iter().enumerate() {
             for (output_index, weight) in neuron.weights.iter().enumerate() {
-                output[output_index] += (input[input_index] + neuron.bias) * weight;
+                execution_context.outputs[output_index] +=
+                    (input[input_index] + neuron.bias) * weight;
             }
         }
-        for value in &mut output {
+        for value in &mut execution_context.outputs {
             *value = self.activation.activate(*value);
         }
-        output
     }
 
     fn trainable_parameter_count(&self) -> usize {
@@ -117,8 +148,8 @@ impl Layer for OutputLayer {
         self.output_count
     }
 
-    fn evaluate(&self, input: &[f64]) -> Vec<f64> {
-        input.to_vec()
+    fn evaluate(&self, input: &[f64], execution_context: &mut LayerExecutionContext) {
+        execution_context.outputs.copy_from_slice(input);
     }
 
     fn trainable_parameter_count(&self) -> usize {
@@ -151,19 +182,53 @@ impl Model {
         self.layers.as_mut_slice()
     }
 
-    pub fn evaluate_range(&self, first: usize, last: usize, input: &[f64]) -> Vec<f64> {
+    pub fn evaluate_range<'result>(
+        &self,
+        first: usize,
+        last: usize,
+        input: &'result [f64],
+        execution_context: &'result mut ExecutionContext,
+    ) -> &'result [f64] {
         debug_assert!(first <= last);
-        let mut output = input.to_vec();
-        for layer in self.layers.iter().skip(first).take(last - first) {
+        let mut output = input;
+        for (layer, execution_context) in self
+            .layers
+            .iter()
+            .zip(execution_context.layer_execution_contexts.iter_mut())
+            .skip(first)
+            .take(last - first)
+        {
             debug_assert_eq!(output.len(), layer.input_size());
-            output = layer.evaluate(&output);
+            layer.evaluate(output, execution_context);
+            output = execution_context.outputs.as_slice();
         }
         output
     }
-    pub fn evaluate_from(&self, first: usize, input: &[f64]) -> Vec<f64> {
-        self.evaluate_range(first, self.layers.len(), input)
+    pub fn evaluate_from<'result>(
+        &self,
+        first: usize,
+        input: &'result [f64],
+        execution_context: &'result mut ExecutionContext,
+    ) -> &'result [f64] {
+        self.evaluate_range(first, self.layers.len(), input, execution_context)
     }
-    pub fn evaluate(&self, input: &[f64]) -> Vec<f64> {
-        self.evaluate_from(0, input)
+    pub fn evaluate<'result>(
+        &self,
+        input: &'result [f64],
+        execution_context: &'result mut ExecutionContext,
+    ) -> &'result [f64] {
+        self.evaluate_from(0, input, execution_context)
+    }
+
+    pub fn create_execution_context(&self) -> ExecutionContext {
+        let mut result = ExecutionContext::new();
+        for layer_index in 0..(self.layers.len() - 1) {
+            let next_layer_size = self.layers[layer_index + 1].input_size();
+            result.add_layer(next_layer_size);
+        }
+        // The last layer will always have to output the same number of elements as it receives inputs.
+        let last_layer_size = self.layers.last().unwrap().input_size();
+        result.add_layer(last_layer_size);
+        result
     }
 }
