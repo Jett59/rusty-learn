@@ -15,32 +15,21 @@ pub trait LossFunction {
     fn loss(&self, expected: &[f64], actual: &[f64]) -> f64;
 }
 
-pub fn mean_squared_error(data: Vec<DatasetItem>) -> impl LossFunction {
-    struct MeanSquaredError {
-        data: Vec<DatasetItem>,
-    }
-    impl LossFunction for MeanSquaredError {
-        fn loss(&self, expected: &[f64], actual: &[f64]) -> f64 {
-            let mut loss = 0.0;
-            for (expected, actual) in expected.iter().zip(actual.iter()) {
-                loss += (expected - actual).powi(2);
-            }
-            loss / expected.len() as f64
-        }
-    }
-    MeanSquaredError { data }
-}
+pub struct MeanSquaredError;
 
-#[derive(Debug, Clone, Copy)]
-enum LossMode {
-    LossOnly,
-    StandardDeviation,
+impl LossFunction for MeanSquaredError {
+    fn loss(&self, expected: &[f64], actual: &[f64]) -> f64 {
+        let mut loss = 0.0;
+        for (expected, actual) in expected.iter().zip(actual.iter()) {
+            loss += (expected - actual).powi(2);
+        }
+        loss / expected.len() as f64
+    }
 }
 
 fn calculate_loss(
     model: &mut Model,
     dataset: &[DatasetItem],
-    loss_mode: LossMode,
     loss_function: &dyn LossFunction,
     first_layer: usize,
     inputs: &[Vec<f64>],
@@ -54,18 +43,7 @@ fn calculate_loss(
         })
         .collect::<Vec<f64>>();
     let mean_loss = losses_per_datapoint.iter().sum::<f64>() / losses_per_datapoint.len() as f64;
-    match loss_mode {
-        LossMode::LossOnly => mean_loss,
-        LossMode::StandardDeviation => {
-            let standard_deviation = (losses_per_datapoint
-                .iter()
-                .map(|loss| (loss - mean_loss).powi(2))
-                .sum::<f64>()
-                / losses_per_datapoint.len() as f64)
-                .sqrt();
-            standard_deviation
-        }
-    }
+    mean_loss
 }
 
 pub fn fit(
@@ -76,7 +54,6 @@ pub fn fit(
     epochs: usize,
 ) -> ModelStats {
     let mut loss = f64::INFINITY;
-    let mut loss_mode = LossMode::StandardDeviation;
     for _epoch in 1..=epochs {
         // We could calculate the derivative and do all that.
         // We could also approximate the derivative by doing a finite difference.
@@ -84,7 +61,6 @@ pub fn fit(
         loss = calculate_loss(
             model,
             dataset,
-            loss_mode,
             loss_function,
             0,
             &dataset
@@ -104,13 +80,12 @@ pub fn fit(
             for trainable_parameter_index in 0..trainable_parameter_count {
                 let mut layer = &mut model.layers_mut()[layer_index];
                 let mut trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
-                let original_value = trainable_parameter.clone();
+                let original_value = *trainable_parameter;
                 // Change it by the learning rate and see what happens to the loss.
                 *trainable_parameter = original_value + learning_rate;
                 let new_loss_from_increasing = calculate_loss(
                     model,
                     dataset,
-                    loss_mode,
                     loss_function,
                     layer_index,
                     &output_from_previous_layers,
@@ -123,7 +98,6 @@ pub fn fit(
                 let new_loss_from_decreasing = calculate_loss(
                     model,
                     dataset,
-                    loss_mode,
                     loss_function,
                     layer_index,
                     &output_from_previous_layers,
@@ -158,30 +132,9 @@ pub fn fit(
                 if best.0 < loss {
                     let trainable_parameter = layer.trainable_parameter(best.2);
                     *trainable_parameter = best.1;
-                    // Now we decide whether to continue with the current loss mode or not.
-                    // These models often get stuck at a very high loss, so we want to switch strategies when this happens.
-                    // The threshold here is arbitrary, but it seems to be pretty good at this point.
-                    if loss - best.0 < 0.0001 * loss {
-                        loss_mode = match loss_mode {
-                            LossMode::LossOnly => LossMode::StandardDeviation,
-                            LossMode::StandardDeviation => LossMode::LossOnly,
-                        }
-                    }
                 }
             }
         }
     }
-    // Recalculate the loss in LossOnly mode.
-    loss = calculate_loss(
-        model,
-        dataset,
-        LossMode::LossOnly,
-        loss_function,
-        0,
-        &dataset
-            .iter()
-            .map(|item| item.input.clone())
-            .collect::<Vec<Vec<f64>>>(),
-    );
     ModelStats { loss }
 }

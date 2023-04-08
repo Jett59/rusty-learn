@@ -4,6 +4,7 @@ use std::fmt;
 pub enum Activation {
     Linear,
     Relu,
+    Sigmoid,
 }
 
 impl Activation {
@@ -11,6 +12,8 @@ impl Activation {
         match self {
             Activation::Linear => value,
             Activation::Relu => value.max(0.0),
+            // Uses the fast version of sigmoid ((1/(1+abs(x))+1)/2)
+            Activation::Sigmoid => (1.0 / (1.0 + value.abs()) + 1.0) / 2.0,
         }
     }
 }
