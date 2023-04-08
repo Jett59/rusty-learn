@@ -12,7 +12,7 @@ pub struct DatasetItem {
 }
 
 pub trait LossFunction {
-    fn loss(&self, predicted: &[f64], actual: &[f64]) -> f64;
+    fn loss(&self, expected: &[f64], actual: &[f64]) -> f64;
 }
 
 pub fn mean_squared_error(data: Vec<DatasetItem>) -> impl LossFunction {
@@ -20,12 +20,12 @@ pub fn mean_squared_error(data: Vec<DatasetItem>) -> impl LossFunction {
         data: Vec<DatasetItem>,
     }
     impl LossFunction for MeanSquaredError {
-        fn loss(&self, predicted: &[f64], actual: &[f64]) -> f64 {
+        fn loss(&self, expected: &[f64], actual: &[f64]) -> f64 {
             let mut loss = 0.0;
-            for (predicted, actual) in predicted.iter().zip(actual.iter()) {
-                loss += (predicted - actual).powi(2);
+            for (expected, actual) in expected.iter().zip(actual.iter()) {
+                loss += (expected - actual).powi(2);
             }
-            loss / predicted.len() as f64
+            loss / expected.len() as f64
         }
     }
     MeanSquaredError { data }
@@ -49,8 +49,8 @@ fn calculate_loss(
         .iter()
         .zip(inputs.iter())
         .map(|(item, input)| {
-            let predicted = model.evaluate_from(first_layer, input);
-            loss_function.loss(&predicted, &item.label)
+            let output = model.evaluate_from(first_layer, input);
+            loss_function.loss(&item.label, &output)
         })
         .collect::<Vec<f64>>();
     let mean_loss = losses_per_datapoint.iter().sum::<f64>() / losses_per_datapoint.len() as f64;
@@ -76,7 +76,7 @@ pub fn fit(
     epochs: usize,
 ) -> ModelStats {
     let mut loss = f64::INFINITY;
-    let mut loss_mode = LossMode::LossOnly;
+    let mut loss_mode = LossMode::StandardDeviation;
     for _epoch in 1..=epochs {
         // We could calculate the derivative and do all that.
         // We could also approximate the derivative by doing a finite difference.
@@ -160,7 +160,7 @@ pub fn fit(
                     *trainable_parameter = best.1;
                     // Now we decide whether to continue with the current loss mode or not.
                     // These models often get stuck at a very high loss, so we want to switch strategies when this happens.
-                    // The threshold here is arbitrary, but I notice that it tends to get better results the lower it is.
+                    // The threshold here is arbitrary, but it seems to be pretty good at this point.
                     if loss - best.0 < 0.0001 * loss {
                         loss_mode = match loss_mode {
                             LossMode::LossOnly => LossMode::StandardDeviation,
