@@ -53,10 +53,7 @@ fn main() {
         Box::new(OutputLayer::new(1)),
     ]);
     let dataset = read_inputs();
-    println!(
-        "{:?}",
-        fit(&mut model, &MeanSquaredError, &dataset, 0.1, 100)
-    );
+    println!("{:?}", fit(&mut model, &MeanSquaredError::<1>, &dataset, 0.1, 100));
 
     //println!("{model:?}");
 }

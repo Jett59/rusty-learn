@@ -15,15 +15,17 @@ pub trait LossFunction {
     fn loss(&self, expected: &[f64], actual: &[f64]) -> f64;
 }
 
-pub struct MeanSquaredError;
+pub struct MeanSquaredError<const OUTPUT_COUNT: usize>;
 
-impl LossFunction for MeanSquaredError {
+impl<const OUTPUT_COUNT: usize> LossFunction for MeanSquaredError<OUTPUT_COUNT> {
     fn loss(&self, expected: &[f64], actual: &[f64]) -> f64 {
+        assert_eq!(expected.len(), actual.len());
+        assert_eq!(expected.len(), OUTPUT_COUNT);
         let mut loss = 0.0;
         for (expected, actual) in expected.iter().zip(actual.iter()) {
             loss += (expected - actual).powi(2);
         }
-        loss / expected.len() as f64
+        loss / OUTPUT_COUNT as f64
     }
 }
 

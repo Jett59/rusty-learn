@@ -189,7 +189,7 @@ impl Model {
         input: &'result [f64],
         execution_context: &'result mut ExecutionContext,
     ) -> &'result [f64] {
-        debug_assert!(first <= last);
+        assert!(first <= last);
         let mut output = input;
         for (layer, execution_context) in self
             .layers
@@ -198,7 +198,7 @@ impl Model {
             .skip(first)
             .take(last - first)
         {
-            debug_assert_eq!(output.len(), layer.input_size());
+            assert_eq!(output.len(), layer.input_size());
             layer.evaluate(output, execution_context);
             output = execution_context.outputs.as_slice();
         }
