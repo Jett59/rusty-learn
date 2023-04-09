@@ -49,6 +49,36 @@ fn calculate_loss(
     mean_loss
 }
 
+#[allow(clippy::too_many_arguments)] // We need them all.
+pub fn estimate_derivative(
+    model: &mut Model,
+    execution_context: &mut ExecutionContext,
+    layer_index: usize,
+    parameter_index: usize,
+    previous_loss: f64,
+    loss_function: &dyn LossFunction,
+    dataset: &[DatasetItem],
+    inputs: &[Vec<f64>],
+) -> f64 {
+    const CHANGE: f64 = 0.00001;
+    let layer = &mut model.layers_mut()[layer_index];
+    let trainable_parameter = layer.trainable_parameter(parameter_index);
+    let original_value = *trainable_parameter;
+    *trainable_parameter += CHANGE;
+    let new_loss = calculate_loss(
+        model,
+        dataset,
+        loss_function,
+        layer_index,
+        inputs,
+        execution_context,
+    );
+    let layer = &mut model.layers_mut()[layer_index];
+    let trainable_parameter = layer.trainable_parameter(parameter_index);
+    *trainable_parameter = original_value;
+    (new_loss - previous_loss) / CHANGE
+}
+
 pub fn fit(
     model: &mut Model,
     loss_function: &dyn LossFunction,
@@ -58,6 +88,11 @@ pub fn fit(
 ) -> ModelStats {
     let mut loss = f64::INFINITY;
     let mut execution_context = model.create_execution_context();
+    let mut per_parameter_learning_rates = model
+        .layers()
+        .iter()
+        .map(|layer| vec![learning_rate; layer.trainable_parameter_count()])
+        .collect::<Vec<_>>();
     for _epoch in 1..=epochs {
         // We could calculate the derivative and do all that.
         // We could also approximate the derivative by doing a finite difference.
@@ -85,65 +120,66 @@ pub fn fit(
                 })
                 .collect::<Vec<Vec<f64>>>();
             let trainable_parameter_count = model.layers()[layer_index].trainable_parameter_count();
-            let mut new_losses = Vec::with_capacity(trainable_parameter_count);
+            // This contains tuples with the first element the derivative, the second the predicted change in loss.
+            let mut derivatives = Vec::with_capacity(trainable_parameter_count);
             for trainable_parameter_index in 0..trainable_parameter_count {
-                let mut layer = &mut model.layers_mut()[layer_index];
-                let mut trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
-                let original_value = *trainable_parameter;
-                // Change it by the learning rate and see what happens to the loss.
-                *trainable_parameter = original_value + learning_rate;
-                let new_loss_from_increasing = calculate_loss(
+                let derivative = estimate_derivative(
                     model,
-                    dataset,
-                    loss_function,
-                    layer_index,
-                    &output_from_previous_layers,
                     &mut execution_context,
-                );
-                // Refresh our references so rust doesn't complain.
-                layer = &mut model.layers_mut()[layer_index];
-                trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
-                // Now likewise for decreasing the value.
-                *trainable_parameter = original_value + -1.0 * learning_rate;
-                let new_loss_from_decreasing = calculate_loss(
-                    model,
-                    dataset,
-                    loss_function,
                     layer_index,
+                    trainable_parameter_index,
+                    loss,
+                    loss_function,
+                    dataset,
                     &output_from_previous_layers,
-                    &mut execution_context,
                 );
-                // Refresh our references so rust doesn't complain.
-                layer = &mut model.layers_mut()[layer_index];
-                trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
-                // Now restore the original value of the parameter.
-                *trainable_parameter = original_value;
-                // Whichever one gave a better loss, that is the one we submit for this parameter.
-                if new_loss_from_increasing < new_loss_from_decreasing {
-                    new_losses.push((
-                        new_loss_from_increasing,
-                        *trainable_parameter + learning_rate,
-                        trainable_parameter_index,
-                    ));
-                } else {
-                    new_losses.push((
-                        new_loss_from_decreasing,
-                        *trainable_parameter - learning_rate,
-                        trainable_parameter_index,
-                    ));
-                }
+                derivatives.push((
+                    derivative,
+                    derivative
+                        * per_parameter_learning_rates[layer_index][trainable_parameter_index],
+                ));
             }
             // Now we commit the one which gave the best loss.
             if trainable_parameter_count > 0 {
-                let best = new_losses
-                    .into_iter()
-                    .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+                // What we want is for the derivative's magnitude to be larger.
+                // It doesn't matter which way we have to push the parameter, only how much impact it will have.
+                let (best_derivative_index, (best_derivative, _best_predicted_loss)) = derivatives
+                    .iter()
+                    .enumerate()
+                    .max_by(|(_, (_, a)), (_, (_, b))| a.abs().partial_cmp(&b.abs()).unwrap())
                     .unwrap();
                 let layer = &mut model.layers_mut()[layer_index];
-                if best.0 < loss {
-                    let trainable_parameter = layer.trainable_parameter(best.2);
-                    *trainable_parameter = best.1;
+                let trainable_parameter = layer.trainable_parameter(best_derivative_index);
+                // The amount we change it by should be related to the derivative. Larger derivatives mean we can go further before it starts to level off.
+                // Since we want to decrease the value, we have to go forwards if the derivative is negative.
+                let change = best_derivative
+                    * per_parameter_learning_rates[layer_index][best_derivative_index];
+                *trainable_parameter -= change;
+                let new_loss = calculate_loss(
+                    model,
+                    dataset,
+                    loss_function,
+                    layer_index,
+                    &output_from_previous_layers,
+                    &mut execution_context,
+                );
+                let new_derivative = estimate_derivative(
+                    model,
+                    &mut execution_context,
+                    layer_index,
+                    best_derivative_index,
+                    new_loss,
+                    loss_function,
+                    dataset,
+                    &output_from_previous_layers,
+                );
+                // If the new derivative is a differnt sign to the old one, we've gone too far.
+                if new_derivative.signum() != best_derivative.signum() {
+                    per_parameter_learning_rates[layer_index][best_derivative_index] *= 0.5;
+                } else {
+                    per_parameter_learning_rates[layer_index][best_derivative_index] *= 1.25;
                 }
+                loss = new_loss;
             }
         }
     }

@@ -57,7 +57,7 @@ fn main() {
     let dataset = read_inputs();
     println!(
         "{:?}",
-        fit(&mut model, &MeanSquaredError::<1>, &dataset, 0.1, 100)
+        fit(&mut model, &MeanSquaredError::<1>, &dataset, 10.0, 100)
     );
 
     //println!("{model:?}");
