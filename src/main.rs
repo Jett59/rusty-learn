@@ -14,8 +14,10 @@ use crate::{
 mod data;
 mod neuron;
 mod optimizer;
+mod util;
 
 const INPUT_LETTER_COUNT: usize = 20;
+const INPUT_NEURON_COUNT: usize = INPUT_LETTER_COUNT * 26;
 
 fn read_inputs() -> Vec<DatasetItem> {
     let file = File::open("spelling.txt").expect("Missing spelling.txt");
@@ -36,7 +38,7 @@ fn read_inputs() -> Vec<DatasetItem> {
                         word.as_bytes(),
                         b"abcdefghijklmnopqrstuvwxyz",
                     )),
-                    INPUT_LETTER_COUNT * 26,
+                    INPUT_NEURON_COUNT,
                 ),
                 vec![if correct { 1.0 } else { 0.0 }],
             )
@@ -47,13 +49,16 @@ fn read_inputs() -> Vec<DatasetItem> {
 
 fn main() {
     let mut model = Model::new(vec![
-        Box::new(DenseLayer::new(INPUT_LETTER_COUNT * 26, Activation::Relu)),
-        //Box::new(DenseLayer::new(INPUT_LETTER_COUNT * 26, Activation::Relu)),
-        Box::new(DenseLayer::new(1, Activation::Sigmoid)),
+        Box::new(DenseLayer::<INPUT_NEURON_COUNT>::new(Activation::Relu)),
+        //Box::new(DenseLayer::<INPUT_NEURON_COUNT>::new(Activation::Relu)),
+        Box::new(DenseLayer::<1>::new(Activation::Sigmoid)),
         Box::new(OutputLayer::new(1)),
     ]);
     let dataset = read_inputs();
-    println!("{:?}", fit(&mut model, &MeanSquaredError::<1>, &dataset, 0.1, 100));
+    println!(
+        "{:?}",
+        fit(&mut model, &MeanSquaredError::<1>, &dataset, 0.1, 100)
+    );
 
     //println!("{model:?}");
 }

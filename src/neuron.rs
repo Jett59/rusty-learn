@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::util::boxed_array;
+
 #[derive(Clone, Debug)]
 pub enum Activation {
     Linear,
@@ -63,44 +65,39 @@ pub trait Layer: fmt::Debug {
 }
 
 #[derive(Clone, Debug)]
-pub struct DenseLayer {
-    neurons: Vec<Neuron>,
+pub struct DenseLayer<const NEURON_COUNT: usize> {
+    neurons: Box<[Neuron; NEURON_COUNT]>,
     weight_count: usize,
     activation: Activation,
 }
 
-impl DenseLayer {
-    pub fn new(neuron_count: usize, activation: Activation) -> Self {
-        let mut neurons = Vec::with_capacity(neuron_count);
-        for _ in 0..neuron_count {
-            neurons.push(Neuron {
+impl<const NEURON_COUNT: usize> DenseLayer<NEURON_COUNT> {
+    pub fn new(activation: Activation) -> Self {
+        Self {
+            neurons: boxed_array(Neuron {
                 weights: Vec::new(),
                 bias: 0.0,
-            });
-        }
-        Self {
-            neurons,
+            }),
             weight_count: 0,
             activation,
         }
     }
 }
 
-impl Layer for DenseLayer {
+impl<const NEURON_COUNT: usize> Layer for DenseLayer<NEURON_COUNT> {
     fn init(&mut self, next_layer_size: usize) {
         self.weight_count = next_layer_size;
-        for neuron in &mut self.neurons {
+        for neuron in self.neurons.as_mut_slice() {
             // Setting the weights to 0 will make it very challenging to optimize, so we set them to 0.01 instead.
             neuron.weights = vec![0.01; self.weight_count];
         }
     }
 
     fn input_size(&self) -> usize {
-        self.neurons.len()
+        NEURON_COUNT
     }
 
     fn evaluate(&self, input: &[f64], execution_context: &mut LayerExecutionContext) {
-        // Zero it.
         execution_context.outputs.fill(0.0);
         for (input_index, neuron) in self.neurons.iter().enumerate() {
             for (output_index, weight) in neuron.weights.iter().enumerate() {
@@ -115,7 +112,7 @@ impl Layer for DenseLayer {
 
     fn trainable_parameter_count(&self) -> usize {
         // Each neuron has weight_count weights and 1 bias.
-        self.neurons.len() * (self.weight_count + 1)
+        NEURON_COUNT * (self.weight_count + 1)
     }
     fn trainable_parameter(&mut self, index: usize) -> &mut f64 {
         // For each neuron, it starts with its weights, then its bias, then the next neuron.
