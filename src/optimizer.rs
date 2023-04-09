@@ -100,6 +100,10 @@ pub fn fit(
         .iter()
         .map(|layer| vec![learning_rate; layer.trainable_parameter_count()])
         .collect::<Vec<_>>();
+    let whole_dataset_inputs = dataset
+        .iter()
+        .map(|item| item.input.clone())
+        .collect::<Vec<Vec<f64>>>();
     for _epoch in 1..=epochs {
         // We could calculate the derivative and do all that.
         // We could also approximate the derivative by doing a finite difference.
@@ -109,14 +113,13 @@ pub fn fit(
             dataset,
             loss_function,
             0,
-            &dataset
-                .iter()
-                .map(|item| item.input.clone())
-                .collect::<Vec<Vec<f64>>>(),
+            &whole_dataset_inputs,
             &mut execution_context,
         );
         println!("Loss: {loss}");
+        let whole_dataset_loss = loss;
         for batch_index in 0..batch_count {
+            let whole_dataset = &dataset;
             let dataset = &dataset[batch_index * batch_size
                 ..batch_index * batch_size
                     + if batch_index == batch_count - 1 {
@@ -160,6 +163,7 @@ pub fn fit(
                         dataset,
                         &output_from_previous_layers,
                     );
+                    //println!("{trainable_parameter_index}: {derivative}");
                     derivatives.push((
                         derivative,
                         derivative
@@ -209,10 +213,34 @@ pub fn fit(
                     } else {
                         per_parameter_learning_rates[layer_index][best_derivative_index] *= 1.25;
                     }
-                    loss = new_loss;
+                    // Now we have to calculate the loss over the whole dataset. This is because we don't want to commit a change which overfits this batch and makes the loss worse on the whole dataset.
+                    let new_whole_dataset_loss = calculate_loss(
+                        model,
+                        whole_dataset,
+                        loss_function,
+                        0,
+                        &whole_dataset_inputs,
+                        &mut execution_context,
+                    );
+                    if new_whole_dataset_loss < whole_dataset_loss {
+                        loss = new_loss;
+                    } else {
+                        // We've gone too far, so we need to go back.
+                        let layer = &mut model.layers_mut()[layer_index];
+                        let trainable_parameter = layer.trainable_parameter(best_derivative_index);
+                        *trainable_parameter += change;
+                    }
                 }
             }
         }
     }
+    loss = calculate_loss(
+        model,
+        dataset,
+        loss_function,
+        0,
+        &whole_dataset_inputs,
+        &mut execution_context,
+    );
     ModelStats { loss }
 }

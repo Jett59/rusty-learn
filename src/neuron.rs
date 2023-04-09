@@ -99,14 +99,11 @@ impl<const NEURON_COUNT: usize> Layer for DenseLayer<NEURON_COUNT> {
 
     fn evaluate(&self, input: &[f64], execution_context: &mut LayerExecutionContext) {
         execution_context.outputs.fill(0.0);
-        for (input_index, neuron) in self.neurons.iter().enumerate() {
+        for (neuron, input) in self.neurons.iter().zip(input) {
+            let input = self.activation.activate(*input);
             for (output_index, weight) in neuron.weights.iter().enumerate() {
-                execution_context.outputs[output_index] +=
-                    (input[input_index] + neuron.bias) * weight;
+                execution_context.outputs[output_index] += (input + neuron.bias) * weight;
             }
-        }
-        for value in &mut execution_context.outputs {
-            *value = self.activation.activate(*value);
         }
     }
 
