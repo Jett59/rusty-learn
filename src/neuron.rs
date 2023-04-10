@@ -2,20 +2,37 @@ use std::fmt;
 
 use crate::util::boxed_array;
 
-#[derive(Clone, Debug)]
-pub enum Activation {
-    Linear,
-    Relu,
-    Sigmoid,
+pub trait Activation: fmt::Debug + Default {
+    fn activate(&self, value: f64) -> f64;
 }
 
-impl Activation {
-    fn activate(&self, value: f64) -> f64 {
-        match self {
-            Activation::Linear => value,
-            Activation::Relu => value.max(0.0),
-            // Uses the fast version of sigmoid ((value/(1+abs(x))+1)/2)
-            Activation::Sigmoid => (value / (1.0 + value.abs()) + 1.0) / 2.0,
+pub mod activation {
+    use super::*;
+
+    #[derive(Debug, Default)]
+    pub struct Linear;
+    impl Activation for Linear {
+        fn activate(&self, value: f64) -> f64 {
+            value
+        }
+    }
+
+    #[derive(Debug, Default)]
+    pub struct Relu;
+    impl Activation for Relu {
+        fn activate(&self, value: f64) -> f64 {
+            value.max(0.0)
+        }
+    }
+
+    /// Fast sigmoid (not using the exp function)
+    ///
+    /// The formula is (x/(1+abs(x))+1)/2.
+    #[derive(Debug, Default)]
+    pub struct Sigmoid;
+    impl Activation for Sigmoid {
+        fn activate(&self, value: f64) -> f64 {
+            (value / (1.0 + value.abs()) + 1.0) / 2.0
         }
     }
 }
@@ -65,26 +82,30 @@ pub trait Layer: fmt::Debug {
 }
 
 #[derive(Clone, Debug)]
-pub struct DenseLayer<const NEURON_COUNT: usize> {
+pub struct DenseLayer<const NEURON_COUNT: usize, ActivationFunction: Activation> {
     neurons: Box<[Neuron; NEURON_COUNT]>,
     weight_count: usize,
-    activation: Activation,
+    activation: ActivationFunction,
 }
 
-impl<const NEURON_COUNT: usize> DenseLayer<NEURON_COUNT> {
-    pub fn new(activation: Activation) -> Self {
+impl<const NEURON_COUNT: usize, ActivationFunction: Activation>
+    DenseLayer<NEURON_COUNT, ActivationFunction>
+{
+    pub fn new() -> Self {
         Self {
             neurons: boxed_array(Neuron {
                 weights: Vec::new(),
                 bias: 0.0,
             }),
             weight_count: 0,
-            activation,
+            activation: Default::default(),
         }
     }
 }
 
-impl<const NEURON_COUNT: usize> Layer for DenseLayer<NEURON_COUNT> {
+impl<const NEURON_COUNT: usize, ActivationFunction: Activation> Layer
+    for DenseLayer<NEURON_COUNT, ActivationFunction>
+{
     fn init(&mut self, next_layer_size: usize) {
         self.weight_count = next_layer_size;
         for neuron in self.neurons.as_mut_slice() {

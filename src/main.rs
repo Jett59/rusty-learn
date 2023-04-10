@@ -4,10 +4,10 @@ use std::{
 };
 
 use data::{flatten, one_hot_encode, pad_end};
-use neuron::{Activation, DenseLayer, Model};
+use neuron::{DenseLayer, Model};
 
 use crate::{
-    neuron::OutputLayer,
+    neuron::{activation, OutputLayer},
     optimizer::{calculate_loss, fit, DatasetItem, MeanSquaredError},
 };
 
@@ -49,9 +49,9 @@ fn read_inputs() -> Vec<DatasetItem> {
 
 fn main() {
     let mut model = Model::new(vec![
-        Box::new(DenseLayer::<INPUT_NEURON_COUNT>::new(Activation::Relu)),
-        //Box::new(DenseLayer::<10>::new(Activation::Relu)),
-        Box::new(DenseLayer::<1>::new(Activation::Sigmoid)),
+        Box::new(DenseLayer::<INPUT_NEURON_COUNT, activation::Relu>::new()),
+        //Box::new(DenseLayer::<INPUT_NEURON_COUNT, activation::Relu>::new()),
+        Box::new(DenseLayer::<1, activation::Sigmoid>::new()),
         Box::new(OutputLayer::new(1)),
     ]);
     let dataset = read_inputs();
