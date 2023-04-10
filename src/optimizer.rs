@@ -1,3 +1,5 @@
+use std::io::{stdout, Write};
+
 use crate::neuron::{ExecutionContext, Model};
 
 #[derive(Debug, Clone)]
@@ -29,7 +31,7 @@ impl<const OUTPUT_COUNT: usize> LossFunction for MeanSquaredError<OUTPUT_COUNT> 
     }
 }
 
-fn calculate_loss(
+pub fn calculate_loss(
     model: &mut Model,
     dataset: &[DatasetItem],
     loss_function: &dyn LossFunction,
@@ -93,7 +95,7 @@ pub fn fit(
     } else {
         dataset.len() % batch_size
     };
-    let mut loss = f64::INFINITY;
+    let mut loss;
     let mut execution_context = model.create_execution_context();
     let mut per_parameter_learning_rates = model
         .layers()
@@ -105,9 +107,6 @@ pub fn fit(
         .map(|item| item.input.clone())
         .collect::<Vec<Vec<f64>>>();
     for _epoch in 1..=epochs {
-        // We could calculate the derivative and do all that.
-        // We could also approximate the derivative by doing a finite difference.
-        // We'll do that because it is simpler.
         loss = calculate_loss(
             model,
             dataset,
@@ -117,7 +116,6 @@ pub fn fit(
             &mut execution_context,
         );
         println!("Loss: {loss}");
-        let whole_dataset_loss = loss;
         for batch_index in 0..batch_count {
             let whole_dataset = &dataset;
             let dataset = &dataset[batch_index * batch_size
@@ -150,8 +148,6 @@ pub fn fit(
                     .collect::<Vec<Vec<f64>>>();
                 let trainable_parameter_count =
                     model.layers()[layer_index].trainable_parameter_count();
-                // This contains tuples with the first element the derivative, the second the predicted change in loss.
-                let mut derivatives = Vec::with_capacity(trainable_parameter_count);
                 for trainable_parameter_index in 0..trainable_parameter_count {
                     let derivative = estimate_derivative(
                         model,
@@ -163,31 +159,12 @@ pub fn fit(
                         dataset,
                         &output_from_previous_layers,
                     );
-                    //println!("{trainable_parameter_index}: {derivative}");
-                    derivatives.push((
-                        derivative,
-                        derivative
-                            * per_parameter_learning_rates[layer_index][trainable_parameter_index],
-                    ));
-                }
-                // Now we commit the one which gave the best loss.
-                if trainable_parameter_count > 0 {
-                    // What we want is for the derivative's magnitude to be larger.
-                    // It doesn't matter which way we have to push the parameter, only how much impact it will have.
-                    let (best_derivative_index, (best_derivative, _best_predicted_loss)) =
-                        derivatives
-                            .iter()
-                            .enumerate()
-                            .max_by(|(_, (_, a)), (_, (_, b))| {
-                                a.abs().partial_cmp(&b.abs()).unwrap()
-                            })
-                            .unwrap();
                     let layer = &mut model.layers_mut()[layer_index];
-                    let trainable_parameter = layer.trainable_parameter(best_derivative_index);
+                    let trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
                     // The amount we change it by should be related to the derivative. Larger derivatives mean we can go further before it starts to level off.
                     // Since we want to decrease the value, we have to go forwards if the derivative is negative.
-                    let change = best_derivative
-                        * per_parameter_learning_rates[layer_index][best_derivative_index];
+                    let change = derivative
+                        * per_parameter_learning_rates[layer_index][trainable_parameter_index];
                     *trainable_parameter -= change;
                     let new_loss = calculate_loss(
                         model,
@@ -201,38 +178,41 @@ pub fn fit(
                         model,
                         &mut execution_context,
                         layer_index,
-                        best_derivative_index,
+                        trainable_parameter_index,
                         new_loss,
                         loss_function,
                         dataset,
                         &output_from_previous_layers,
                     );
                     // If the new derivative is a differnt sign to the old one, we've gone too far.
-                    if new_derivative.signum() != best_derivative.signum() {
-                        per_parameter_learning_rates[layer_index][best_derivative_index] *= 0.5;
+                    if new_derivative.signum() != derivative.signum() {
+                        per_parameter_learning_rates[layer_index][trainable_parameter_index] *= 0.5;
                     } else {
-                        per_parameter_learning_rates[layer_index][best_derivative_index] *= 1.25;
+                        per_parameter_learning_rates[layer_index][trainable_parameter_index] *=
+                            1.05;
                     }
-                    // Now we have to calculate the loss over the whole dataset. This is because we don't want to commit a change which overfits this batch and makes the loss worse on the whole dataset.
-                    let new_whole_dataset_loss = calculate_loss(
-                        model,
-                        whole_dataset,
-                        loss_function,
-                        0,
-                        &whole_dataset_inputs,
-                        &mut execution_context,
-                    );
-                    if new_whole_dataset_loss < whole_dataset_loss {
+                    let layer = &mut model.layers_mut()[layer_index];
+                    let trainable_parameter = layer.trainable_parameter(trainable_parameter_index);
+                    if new_loss < loss {
                         loss = new_loss;
                     } else {
                         // We've gone too far, so we need to go back.
-                        let layer = &mut model.layers_mut()[layer_index];
-                        let trainable_parameter = layer.trainable_parameter(best_derivative_index);
                         *trainable_parameter += change;
                     }
                 }
             }
+            let whole_dataset_loss = calculate_loss(
+                model,
+                whole_dataset,
+                loss_function,
+                0,
+                &whole_dataset_inputs,
+                &mut execution_context,
+            );
+            print!("{batch_index}/{batch_count}: loss: {whole_dataset_loss}\t\t\r");
+            stdout().lock().flush().unwrap();
         }
+        println!();
     }
     loss = calculate_loss(
         model,

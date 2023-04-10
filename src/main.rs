@@ -8,7 +8,7 @@ use neuron::{Activation, DenseLayer, Model};
 
 use crate::{
     neuron::OutputLayer,
-    optimizer::{fit, DatasetItem, MeanSquaredError},
+    optimizer::{calculate_loss, fit, DatasetItem, MeanSquaredError},
 };
 
 mod data;
@@ -50,15 +50,43 @@ fn read_inputs() -> Vec<DatasetItem> {
 fn main() {
     let mut model = Model::new(vec![
         Box::new(DenseLayer::<INPUT_NEURON_COUNT>::new(Activation::Relu)),
-        //Box::new(DenseLayer::<INPUT_NEURON_COUNT>::new(Activation::Relu)),
+        //Box::new(DenseLayer::<10>::new(Activation::Relu)),
         Box::new(DenseLayer::<1>::new(Activation::Sigmoid)),
         Box::new(OutputLayer::new(1)),
     ]);
     let dataset = read_inputs();
+    let training_data = dataset
+        .iter()
+        .take(dataset.len() / 5 * 4)
+        .cloned()
+        .collect::<Vec<_>>();
+    let validation_data = dataset
+        .iter()
+        .skip(dataset.len() / 5 * 4)
+        .cloned()
+        .collect::<Vec<_>>();
     println!(
         "{:?}",
-        fit(&mut model, &MeanSquaredError::<1>, &dataset, 32, 10.0, 100)
+        fit(
+            &mut model,
+            &MeanSquaredError::<1>,
+            &training_data,
+            32,
+            0.01,
+            100
+        )
     );
-
-    //println!("{model:?}");
+    let mut execution_context = model.create_execution_context();
+    let validation_loss = calculate_loss(
+        &mut model,
+        &validation_data,
+        &MeanSquaredError::<1>,
+        0,
+        &validation_data
+            .iter()
+            .map(|item| item.input.clone())
+            .collect::<Vec<_>>(),
+        &mut execution_context,
+    );
+    println!("Validation loss: {}", validation_loss);
 }

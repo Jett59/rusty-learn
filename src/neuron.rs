@@ -14,8 +14,8 @@ impl Activation {
         match self {
             Activation::Linear => value,
             Activation::Relu => value.max(0.0),
-            // Uses the fast version of sigmoid ((1/(1+abs(x))+1)/2)
-            Activation::Sigmoid => (1.0 / (1.0 + value.abs()) + 1.0) / 2.0,
+            // Uses the fast version of sigmoid ((value/(1+abs(x))+1)/2)
+            Activation::Sigmoid => (value / (1.0 + value.abs()) + 1.0) / 2.0,
         }
     }
 }
@@ -98,11 +98,12 @@ impl<const NEURON_COUNT: usize> Layer for DenseLayer<NEURON_COUNT> {
     }
 
     fn evaluate(&self, input: &[f64], execution_context: &mut LayerExecutionContext) {
-        execution_context.outputs.fill(0.0);
+        let outputs = &mut execution_context.outputs;
+        outputs.fill(0.0);
         for (neuron, input) in self.neurons.iter().zip(input) {
-            let input = self.activation.activate(*input);
-            for (output_index, weight) in neuron.weights.iter().enumerate() {
-                execution_context.outputs[output_index] += (input + neuron.bias) * weight;
+            let input = self.activation.activate(*input) + neuron.bias;
+            for (output, weight) in outputs.iter_mut().zip(neuron.weights.iter()) {
+                *output += input * weight;
             }
         }
     }
