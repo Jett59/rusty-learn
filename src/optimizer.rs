@@ -1,4 +1,7 @@
-use std::io::{stdout, Write};
+use std::{
+    io::{stdout, Write},
+    time::Instant,
+};
 
 use crate::neuron::{ExecutionContext, Model};
 
@@ -95,7 +98,7 @@ pub fn fit(
     } else {
         dataset.len() % batch_size
     };
-    let mut loss;
+    let mut loss = 1.0;
     let mut execution_context = model.create_execution_context();
     let whole_dataset_inputs = dataset
         .iter()
@@ -103,6 +106,7 @@ pub fn fit(
         .collect::<Vec<Vec<f64>>>();
     for epoch in 1..=epochs {
         println!("Epoch {epoch} / {epochs}");
+        let mut last_step_time = Instant::now();
         for batch_index in 0..batch_count {
             let dataset = &dataset[batch_index * batch_size
                 ..batch_index * batch_size
@@ -146,8 +150,6 @@ pub fn fit(
                         dataset,
                         &output_from_previous_layers,
                     );
-                    // The amount we change it by should be related to the derivative. Larger derivatives mean we can go further before it starts to level off.
-                    // Since we want to decrease the value, we have to go forwards if the derivative is negative.
                     let change = derivative * learning_rate;
                     changes.push(change);
                 }
@@ -167,15 +169,12 @@ pub fn fit(
                     &mut execution_context,
                 );
             }
-            /*let whole_dataset_loss = calculate_loss(
-                model,
-                whole_dataset,
-                loss_function,
-                0,
-                &whole_dataset_inputs,
-                &mut execution_context,
-            );*/
-            print!("{batch_index}/{batch_count}: loss: {loss}\t\t\r");
+            let new_step_time = Instant::now();
+            let step_duration = new_step_time - last_step_time;
+            print!(
+                "{batch_index}/{batch_count}: loss: {loss}, step_duration: {step_duration:?}\t\t\r"
+            );
+            last_step_time = new_step_time;
             stdout().lock().flush().unwrap();
         }
         loss = calculate_loss(
@@ -188,13 +187,5 @@ pub fn fit(
         );
         println!("Loss: {loss}");
     }
-    loss = calculate_loss(
-        model,
-        dataset,
-        loss_function,
-        0,
-        &whole_dataset_inputs,
-        &mut execution_context,
-    );
     ModelStats { loss }
 }
