@@ -147,17 +147,21 @@ impl<const NEURON_COUNT: usize, ActivationFunction: Activation> Layer
 }
 
 #[derive(Clone, Debug)]
-pub struct OutputLayer {
+pub struct OutputLayer<ActivationFunction: Activation> {
     output_count: usize,
+    activation: ActivationFunction,
 }
 
-impl OutputLayer {
+impl<ActivationFunction: Activation> OutputLayer<ActivationFunction> {
     pub fn new(output_count: usize) -> Self {
-        Self { output_count }
+        Self {
+            output_count,
+            activation: Default::default(),
+        }
     }
 }
 
-impl Layer for OutputLayer {
+impl<ActivationFunction: Activation> Layer for OutputLayer<ActivationFunction> {
     fn init(&mut self, _next_layer_size: usize) {}
 
     fn input_size(&self) -> usize {
@@ -165,7 +169,9 @@ impl Layer for OutputLayer {
     }
 
     fn evaluate(&self, input: &[f64], execution_context: &mut LayerExecutionContext) {
-        execution_context.outputs.copy_from_slice(input);
+        for (index, value) in input.iter().enumerate() {
+            execution_context.outputs[index] = self.activation.activate(*value);
+        }
     }
 
     fn trainable_parameter_count(&self) -> usize {

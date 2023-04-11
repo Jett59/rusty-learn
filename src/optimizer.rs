@@ -34,6 +34,22 @@ impl<const OUTPUT_COUNT: usize> LossFunction for MeanSquaredError<OUTPUT_COUNT> 
     }
 }
 
+pub struct BinaryCrossEntropy<const OUTPUT_COUNT: usize>;
+
+impl<const OUTPUT_COUNT: usize> LossFunction for BinaryCrossEntropy<OUTPUT_COUNT> {
+    fn loss(&self, expected: &[f64], actual: &[f64]) -> f64 {
+        assert_eq!(expected.len(), actual.len());
+        assert_eq!(expected.len(), OUTPUT_COUNT);
+        let mut loss = 0.0;
+        for (expected, actual) in expected.iter().zip(actual.iter()) {
+            assert!(actual > &0.0);
+            assert!(actual < &1.0);
+            loss += expected * actual.ln() + (1.0 - expected) * (1.0 - actual).ln();
+        }
+        -loss / OUTPUT_COUNT as f64
+    }
+}
+
 pub fn calculate_loss(
     model: &mut Model,
     dataset: &[DatasetItem],

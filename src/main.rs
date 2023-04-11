@@ -8,7 +8,7 @@ use neuron::{DenseLayer, Model};
 
 use crate::{
     neuron::{activation, OutputLayer},
-    optimizer::{calculate_loss, fit, DatasetItem, MeanSquaredError},
+    optimizer::{calculate_loss, fit, BinaryCrossEntropy, DatasetItem},
 };
 
 mod data;
@@ -51,8 +51,7 @@ fn main() {
     let mut model = Model::new(vec![
         Box::new(DenseLayer::<INPUT_NEURON_COUNT, activation::Relu>::new()),
         //Box::new(DenseLayer::<INPUT_NEURON_COUNT, activation::Relu>::new()),
-        Box::new(DenseLayer::<1, activation::Sigmoid>::new()),
-        Box::new(OutputLayer::new(1)),
+        Box::new(OutputLayer::<activation::Sigmoid>::new(1)),
     ]);
     let dataset = read_inputs();
     let training_data = dataset
@@ -69,18 +68,18 @@ fn main() {
         "{:?}",
         fit(
             &mut model,
-            &MeanSquaredError::<1>,
+            &BinaryCrossEntropy::<1>,
             &training_data,
             32,
             0.01,
-            100
+            1
         )
     );
     let mut execution_context = model.create_execution_context();
     let validation_loss = calculate_loss(
         &mut model,
         &validation_data,
-        &MeanSquaredError::<1>,
+        &BinaryCrossEntropy::<1>,
         0,
         &validation_data
             .iter()
